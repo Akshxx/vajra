@@ -1,7 +1,7 @@
 # VAJRA - Multi-Agent Defense System for Payment Risk
 
 <p align="center">
-  <img src="assets/vajra-logo.png" alt="VAJRA Logo" width="200"/>
+  <img src="assets/vajra-logo.png" alt="VAJRA Logo" width="100%" style="max-width: 800px; height: auto;"/>
 </p>
 
 > **Razorpay AI Buildathon - Track 2: AI Risk Manager**
