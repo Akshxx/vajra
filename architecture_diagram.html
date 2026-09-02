@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>VAJRA Architecture Diagram</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 40px; }
+    .mermaid { background: #161b22; border-radius: 8px; padding: 20px; }
+    h1 { color: #58a6ff; text-align: center; margin-bottom: 30px; }
+  </style>
+</head>
+<body>
+  <h1>VAJRA Architecture</h1>
+  <div class="mermaid">
+graph TB
+    subgraph INGESTION["EVENT INGESTION"]
+        A[Razorpay Webhooks] --> B[Kafka]
+        B --> C[Feature Store<br/>Redis + ClickHouse]
+    end
+
+    C --> D[FRAUD VAJRA]
+    C --> E[CHARGEBACK DEFENSE]
+    C --> F[AUDIT LEDGER]
+
+    subgraph FRAUD["FRAUD VAJRA"]
+        D1[Causal KG<br/>Neuro-Symbolic Graph]
+        D2[Counterfactual<br/>Reasoning Engine]
+        D3[Ring Detection<br/>Card-Testing, ATO, etc.]
+    end
+
+    subgraph TRIBUNAL["CHARGEBACK DEFENSE"]
+        E1[Prosecutor Agent<br/>Merchant Case Builder]
+        E2[Defense Agent<br/>Cardholder Challenger]
+        E3[Judge Agent<br/>Cost-Aware Ruling]
+    end
+
+    subgraph POLICY["POLICY SYNTHESIS"]
+        F1[DSL Compiler<br/>Verifiable Workflows]
+        F2[Static Verifier<br/>Deadlines + Bounds]
+        F2[Executor<br/>Bounded Actions]
+    end
+
+    subgraph AUDIT["AUDIT LEDGER"]
+        G1[Merkle-Tree Anchored]
+        G2[Immutable Timeline]
+        G3[Regulatory Query API]
+    end
+
+    E1 --> F1
+    E2 --> F1
+    E3 --> F1
+    F1 --> F2
+    F2 --> F3
+    F3 --> G1
+    D1 --> G1
+    D2 --> G1
+    D3 --> G1
+
+    style INGESTION fill:#1f2937,stroke:#374151
+    style FRAUD fill:#0f766e,stroke:#14b8a6
+    style TRIBUNAL fill:#7c2d12,stroke:#f97316
+    style POLICY fill:#581c87,stroke:#a855f7
+    style AUDIT fill:#1e3a8a,stroke:#3b82f6
+  </div>
+  <script>mermaid.initialize({startOnLoad:true, theme:'dark', themeVariables:{primaryColor:'#0f766e',secondaryColor:'#7c2d12',tertiaryColor:'#581c87',background:'#0d1117',mainBkg:'#161b22',textColor:'#c9d1d9',edgeLabelBackground:'#0d1117',nodeBorder:'#374151',clusterBkg:'#1f2937'}});</script>
+</body>
+</html>

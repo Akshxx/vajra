@@ -1,0 +1,306 @@
+name: VAJRA CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.8.2"
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install ruff mypy
+
+      - name: Run Ruff
+        run: ruff check vajra tests
+
+      - name: Run MyPy
+        run: mypy vajra
+
+      - name: Check formatting
+        run: ruff format --check vajra tests
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vajra
+          POSTGRES_PASSWORD: vajra
+          POSTGRES_DB: vajra
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U vajra"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Wait for services
+        run: |
+          sleep 5
+          pg_isready -h localhost -U vajra
+          redis-cli ping
+
+      - name: Run unit tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://vajra:vajra@localhost:5432/vajra
+          REDIS_URL: redis://localhost:6379/0
+          ENVIRONMENT: development
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          pytest tests/unit -v --cov=vajra --cov-report=xml --cov-fail-under=70
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+
+  eval-harness:
+    name: Eval Harness
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vajra
+          POSTGRES_PASSWORD: vajra
+          POSTGRES_DB: vajra
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U vajra"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install mlflow
+
+      - name: Wait for services
+        run: |
+          sleep 5
+          pg_isready -h localhost -U vajra
+          redis-cli ping
+
+      - name: Generate synthetic datasets
+        env:
+          DATABASE_URL: postgresql+asyncpg://vajra:vajra@localhost:5432/vajra
+          REDIS_URL: redis://localhost:6379/0
+          ENVIRONMENT: development
+        run: |
+          python -m vajra.eval.generate_datasets
+
+      - name: Run Chargeback Defender Eval
+        env:
+          DATABASE_URL: postgresql+asyncpg://vajra:vajra@localhost:5432/vajra
+          REDIS_URL: redis://localhost:6379/0
+          ENVIRONMENT: development
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python -m vajra.eval.run_chargeback_eval
+
+      - name: Run Fraud Sentinel Eval
+        env:
+          DATABASE_URL: postgresql+asyncpg://vajra:vajra@localhost:5432/vajra
+          REDIS_URL: redis://localhost:6379/0
+          ENVIRONMENT: development
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python -m vajra.eval.run_fraud_eval
+
+      - name: Check CI Gates
+        env:
+          DATABASE_URL: postgresql+asyncpg://vajra:vajra@localhost:5432/vajra
+          REDIS_URL: redis://localhost:6379/0
+          ENVIRONMENT: development
+        run: |
+          python -m vajra.eval.check_gates
+
+      - name: Upload eval artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: /tmp/vajra_eval_*/
+          retention-days: 7
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vajra
+          POSTGRES_PASSWORD: vajra
+          POSTGRES_DB: vajra
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U vajra"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install httpx
+
+      - name: Wait for services
+        run: |
+          sleep 5
+          pg_isready -h localhost -U vajra
+          redis-cli ping
+
+      - name: Start API server
+        env:
+          DATABASE_URL: postgresql+asyncpg://vajra:vajra@localhost:5432/vajra
+          REDIS_URL: redis://localhost:6379/0
+          ENVIRONMENT: development
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python -m vajra &
+          SERVER_PID=$!
+          sleep 10
+          curl -f http://localhost:8000/api/v1/health
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://vajra:vajra@localhost:5432/vajra
+          REDIS_URL: redis://localhost:6379/0
+          ENVIRONMENT: development
+        run: |
+          pytest tests/integration -v
+
+      - name: Stop API server
+        run: kill $SERVER_PID || true
+
+  build-and-push:
+    name: Build & Push Docker Image
+    needs: [lint-and-typecheck, unit-tests, eval-harness, integration-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/vajra
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Deploy to staging
+        run: |
+          echo "Deploy to staging environment"
+          # kubectl set image deployment/vajra vajra=ghcr.io/${{ github.repository }}/vajra:${{ github.sha }} -n staging
+
+  deploy-production:
+    name: Deploy to Production
+    needs: deploy-staging
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "Deploy to production environment"
+          # kubectl set image deployment/vajra vajra=ghcr.io/${{ github.repository }}/vajra:${{ github.sha }} -n production
