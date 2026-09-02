@@ -1,0 +1,26 @@
+# VAJRA Railway Configuration
+# Railway uses this for deployment configuration
+
+[build]
+  builder = "DOCKERFILE"
+  dockerfilePath = "Dockerfile"
+
+[deploy]
+  healthcheckPath = "/api/v1/health"
+  healthcheckTimeout = 100
+  restartPolicyType = "ON_FAILURE"
+  restartPolicyMaxRetries = 3
+
+[variables]
+  ENVIRONMENT = "production"
+  LOG_LEVEL = "INFO"
+  PYTHONUNBUFFERED = "1"
+
+# Services that Railway will provision
+# Run `railway add` for each, then link via variables
+# - PostgreSQL: railway add postgresql
+# - Redis: railway add redis
+
+# Example variable references (Railway injects these automatically):
+# DATABASE_URL=${{Postgres.DATABASE_URL}}
+# REDIS_URL=${{Redis.REDIS_URL}}
