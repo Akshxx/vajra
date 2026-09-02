@@ -1,0 +1,78 @@
+# VAJRA Docker ignore
+# Version control
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+dist
+build
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# MLflow
+mlruns/
+
+# Test artifacts
+/tmp/vajra_*
+/tmp/sentinel_*
+/tmp/mlruns/
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Docs (not needed in container)
+*.md
+!README.md
+
+# Monitoring configs (mounted at runtime)
+monitoring/
+
+# Local development files
+.env
+.env.local
+.env.*.local
+
+# Demo scripts (not needed in production)
+demo_simulate_webhooks.py
+
+# Documentation
+docs/
+*.html
+
+# IDE/Editor configs
+.vscode/
+.idea/

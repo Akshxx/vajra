@@ -1,0 +1,46 @@
+# VAJRA Fly.io Configuration
+# Run: fly launch --no-deploy (then edit this file) -> fly deploy
+
+app = "vajra"
+primary_region = "bom"  # Mumbai - closest to Razorpay's Indian market
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  LOG_LEVEL = "INFO"
+  PYTHONUNBUFFERED = "1"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "10s"
+    grace_period = "10s"
+    method = "get"
+    path = "/api/v1/health"
+
+[processes]
+  app = "python -m vajra"
+
+# Resource limits (fits in Fly.io free tier: 256MB shared CPU)
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+# PostgreSQL: Run `fly pg create --name vajra-db` then attach
+# Redis: Use Upstash (free tier) or `fly redis create`
+
+# Uncomment and configure after creating DB/Redis:
+# [env]
+#   DATABASE_URL = "postgresql+asyncpg://user:pass@vajra-db.internal:5432/vajra"
+#   REDIS_URL = "redis://default:password@vajra-redis.upstash.io:6379"
+#   GROQ_API_KEY = "gsk_..."  # Set via: fly secrets set GROQ_API_KEY=...
+#   OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector:4317"
