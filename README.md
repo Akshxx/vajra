@@ -1,5 +1,9 @@
 # VAJRA - Multi-Agent Defense System for Payment Risk
 
+<p align="center">
+  <img src="assets/vajra-logo.png" alt="VAJRA Logo" width="200"/>
+</p>
+
 > **Razorpay AI Buildathon - Track 2: AI Risk Manager**
 
 VAJRA is a production-grade, multi-agent defense system that protects merchants from fraud, chargebacks, and revenue loss through novel AI architectures: **multi-agent tribunal debate**, **neuro-symbolic causal fraud graphs**, and **program-synthesized executable defense policies**.
