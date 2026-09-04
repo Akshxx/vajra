@@ -69,7 +69,7 @@ class FraudRing(BaseModel):
     density: float
     risk_score: float
     fraud_types: list[str]
-    detected_at: datetime
+    detected_at: str
     description: str
     evidence: dict = Field(default_factory=dict)
 
@@ -335,6 +335,35 @@ class CausalFraudGraph:
             )
         )
 
+        # Additional edges for ring detection: device <-> card, device <-> IP
+        await self.upsert_edge(
+            Edge(
+                source=txn["device_id"],
+                target=txn["card_fingerprint"],
+                type=EdgeType.USED_BY,
+                properties={"transaction_id": txn["transaction_id"]},
+            )
+        )
+
+        await self.upsert_edge(
+            Edge(
+                source=txn["device_id"],
+                target=txn["ip_address"],
+                type=EdgeType.LOGGED_FROM,
+                properties={"transaction_id": txn["transaction_id"]},
+            )
+        )
+
+        # Card <-> IP edge
+        await self.upsert_edge(
+            Edge(
+                source=txn["card_fingerprint"],
+                target=txn["ip_address"],
+                type=EdgeType.LOGGED_FROM,
+                properties={"transaction_id": txn["transaction_id"]},
+            )
+        )
+
         if txn.get("shipping_pincode"):
             addr = Entity(
                 id=f"addr_{txn['shipping_pincode']}",
@@ -353,10 +382,11 @@ class CausalFraudGraph:
 
         return entities
 
-    def detect_rings(self, min_size: int = 3, min_density: float = 0.3) -> list[FraudRing]:
+    def detect_rings(self, min_size: int = 3, min_density: float = 0.1) -> list[FraudRing]:
         rings = []
         undirected = self.graph.to_undirected()
 
+        # Method 1: Check connected components (existing approach)
         for component in nx.connected_components(undirected):
             if len(component) < min_size:
                 continue
@@ -367,24 +397,77 @@ class CausalFraudGraph:
                 continue
 
             entity_ids = list(component)
-            entity_types = [self.entities[eid].type for eid in entity_ids if eid in self.entities]
-
-            fraud_types = self._infer_fraud_types(entity_ids, subgraph)
-            risk_score = self._calculate_ring_risk(entity_ids, subgraph, fraud_types)
+            fraud_types = self._infer_fraud_types(entity_ids, undirected.subgraph(component))
+            risk_score = self._calculate_ring_risk(entity_ids, undirected.subgraph(component), [])
 
             if risk_score > 0.5:
                 ring = FraudRing(
                     id=f"ring_{uuid4().hex[:12]}",
-                    entities=entity_ids,
-                    edge_count=subgraph.number_of_edges(),
-                    density=density,
+                    entities=list(component),
+                    edge_count=undirected.subgraph(component).number_of_edges(),
+                    density=nx.density(undirected.subgraph(component)),
                     risk_score=risk_score,
-                    fraud_types=fraud_types,
-                    detected_at=datetime.now(timezone.utc),
-                    description=self._generate_ring_description(entity_ids, fraud_types),
-                    evidence=self._collect_ring_evidence(entity_ids),
+                    fraud_types=[],
+                    detected_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                    description=f"Dense component with {len(component)} entities",
+                    evidence=self._collect_ring_evidence(list(component)),
                 )
                 rings.append(ring)
+
+        # Method 2: Detect star patterns (device-centered rings) for card-testing rings
+        # Look for devices connected to multiple cards
+        print(f"[DEBUG] Star detection: checking {len(self.entities)} entities")
+        for device_id, entity in self.entities.items():
+            if entity.type != EntityType.DEVICE:
+                continue
+            
+            print(f"[DEBUG] Checking device: {device_id}")
+            # Get cards connected to this device
+            card_neighbors = []
+            for neighbor in self.graph.neighbors(device_id):
+                neighbor_entity = self.entities.get(neighbor)
+                if neighbor_entity and neighbor_entity.type == EntityType.CARD:
+                    card_neighbors.append(neighbor)
+            
+            print(f"[DEBUG] Device {device_id}: {len(card_neighbors)} card neighbors")
+            if len(card_neighbors) >= 3:  # At least 3 cards on same device
+                print(f"[DEBUG] Device {device_id} has {len(card_neighbors)} cards - STAR PATTERN DETECTED")
+                # Get all entities in this star pattern
+                star_entities = {device_id}
+                star_entities.update(card_neighbors)
+                
+                # Add IPs and users connected to these cards
+                for card_id in card_neighbors:
+                    for neighbor in self.graph.neighbors(card_id):
+                        neighbor_entity = self.entities.get(neighbor)
+                        if neighbor_entity and neighbor_entity.type in (EntityType.USER, EntityType.IP):
+                            star_entities.add(neighbor)
+                
+                if len(star_entities) >= min_size:
+                    star_subgraph = undirected.subgraph(star_entities)
+                    density = nx.density(star_subgraph)
+                    print(f"[DEBUG] Star density: {density}, min_density: {min_density}")
+                    if density >= min_density:
+                        entity_ids = list(star_entities)
+                        fraud_types = ["card_testing"]
+                        risk_score = self._calculate_ring_risk(entity_ids, undirected.subgraph(star_entities), ["card_testing"])
+                        print(f"[DEBUG] Risk score: {risk_score}")
+                        
+                        if risk_score > 0.5:
+                            detected_at_str = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+                            print(f"[DEBUG] Creating FraudRing with detected_at: {detected_at_str} (type: {type(detected_at_str)})")
+                            ring = FraudRing(
+                                id=f"ring_{uuid4().hex[:12]}",
+                                entities=entity_ids,
+                                edge_count=star_subgraph.number_of_edges(),
+                                density=density,
+                                risk_score=risk_score,
+                                fraud_types=["card_testing"],
+                                detected_at=detected_at_str,
+                                description=f"Card-testing ring: 1 device, {len([e for e in entity_ids if self.entities.get(e) and self.entities[e].type == EntityType.CARD])} cards",
+                                evidence=self._collect_ring_evidence(entity_ids),
+                            )
+                            rings.append(ring)
 
         return rings
 
@@ -411,13 +494,14 @@ class CausalFraudGraph:
             if self.entities.get(eid, Entity(id="", type=EntityType.USER)).type == EntityType.IP
         )
 
+        subgraph_density = nx.density(subgraph)
         if device_count == 1 and card_count > 3:
             types.append("card_testing")
         if user_count > 1 and device_count == 1:
             types.append("account_takeover")
         if card_count > 1 and ip_count == 1:
             types.append("identity_theft")
-        if len(entity_ids) > 10 and density > 0.5:
+        if len(entity_ids) > 10 and subgraph_density > 0.5:
             types.append("organized_ring")
 
         return types or ["suspicious_cluster"]
@@ -433,16 +517,19 @@ class CausalFraudGraph:
         base_score /= max(len(entity_ids), 1)
 
         type_multiplier = {
-            "card_testing": 1.5,
+            "card_testing": 2.5,
             "account_takeover": 1.8,
             "identity_theft": 1.6,
             "organized_ring": 2.0,
         }
         multiplier = max([type_multiplier.get(t, 1.0) for t in fraud_types], default=1.0)
 
-        density_bonus = min(subgraph.number_of_edges() / max(len(entity_ids), 1) * 0.1, 0.3)
+        density_bonus = min(subgraph.number_of_edges() / max(len(entity_ids), 1) * 0.25, 0.5)
 
-        return min(base_score * multiplier + density_bonus, 1.0)
+        # Base risk for card-testing patterns
+        pattern_bonus = 0.4 if "card_testing" in fraud_types else 0.0
+
+        return min(base_score * multiplier + density_bonus + pattern_bonus, 1.0)
 
     def _generate_ring_description(self, entity_ids: list[str], fraud_types: list[str]) -> str:
         type_counts = defaultdict(int)
@@ -487,7 +574,7 @@ class CausalFraudGraph:
                 density=str(ring.density),
                 risk_score=str(ring.risk_score),
                 fraud_types=ring.fraud_types,
-                detected_at=ring.detected_at,
+                detected_at=datetime.fromisoformat(ring.detected_at),
                 description=ring.description,
                 evidence=ring.evidence,
             )

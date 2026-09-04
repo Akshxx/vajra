@@ -109,16 +109,16 @@ docker-compose up -d postgres redis clickhouse kafka zookeeper
 ### Run Evaluations
 ```bash
 # Generate synthetic datasets
-python -m vajra.eval.generate_datasets
+python3 -m vajra.eval.generate_datasets
 
 # Run chargeback defender eval
-python -m vajra.eval.run_chargeback_eval
+python3 -m vajra.eval.run_chargeback_eval
 
 # Run fraud vajra eval
-python -m vajra.eval.run_fraud_eval
+python3 -m vajra.eval.run_fraud_eval
 
 # Check CI gates
-MLFLOW_ALLOW_FILE_STORE=true python -m vajra.eval.check_gates
+MLFLOW_ALLOW_FILE_STORE=true python3 -m vajra.eval.check_gates
 ```
 
 ### Demo Script (Razorpay Webhook Simulation)

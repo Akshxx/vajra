@@ -190,7 +190,7 @@ async def explain_fraud(request: FraudExplainRequest):
 
 
 @app.post("/api/v1/fraud/detect-rings")
-async def detect_fraud_rings(min_size: int = 3, min_density: float = 0.3):
+async def detect_fraud_rings(min_size: int = 3, min_density: float = 0.1):
     graph = await get_fraud_graph()
     rings = graph.detect_rings(min_size=min_size, min_density=min_density)
 

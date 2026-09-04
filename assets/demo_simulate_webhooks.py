@@ -270,8 +270,8 @@ async def run_scenario_4_fraud_ring_detection(client: VajraDemoClient):
 
     # Create 5 transactions with SAME DEVICE but DIFFERENT USERS/CARDS
     # This forms a card-testing ring: 1 device → 5 cards
-    ring_device = "shared_ring_device_demo"
-    ring_merchant = "merch_ring_demo"
+    ring_device = "shared_ring_device"
+    ring_merchant = "merch_ring_001"
 
     for i in range(1, 6):
         txn_id = f"ring_txn_{i:03d}"
@@ -279,18 +279,18 @@ async def run_scenario_4_fraud_ring_detection(client: VajraDemoClient):
         card_id = f"ring_card_{i:03d}"
         ip = f"10.0.0.{i}"
 
-        print(f"  📨 Ingesting transaction {i}/5: {txn_id} (user: ring_user_{i:03d}, card: ring_card_{i:03d}, device: {ring_device})")
+        print(f"  📨 Ingesting transaction {i}/5: {txn_id} (user: {user_id}, card: {card_id}, device: {ring_device})")
 
         await client.ingest_raw_transaction({
-            "transaction_id": f"ring_txn_{i:03d}",
+            "transaction_id": txn_id,
             "amount": 1000,
             "currency": "INR",
-            "user_id": f"ring_user_{i:03d}",
-            "device_id": "shared_ring_device_demo",
+            "user_id": user_id,
+            "device_id": ring_device,
             "ip_address": f"10.0.0.{i}",
             "card_fingerprint": f"ring_card_{i:03d}",
             "card_bin": "411111",
-            "merchant_id": "merch_ring_demo",
+            "merchant_id": ring_merchant,
             "merchant_category": "electronics",
             "email": f"ring_user_{i:03d}@test.com",
             "phone": f"+91999999999{i}",
@@ -300,8 +300,8 @@ async def run_scenario_4_fraud_ring_detection(client: VajraDemoClient):
             "three_ds_result": "success",
         })
 
-    print(f"\n🔍 Scanning graph for fraud rings (min_size=3, min_density=0.1)...")
-    result = await client.detect_fraud_rings(min_size=3, min_density=0.1)
+    print(f"\n🔍 Scanning graph for fraud rings (min_size=3, min_density=0.2)...")
+    result = await client.detect_fraud_rings(min_size=3, min_density=0.2)
     print(json.dumps(result, indent=2, default=str))
 
     if result.get("rings"):
@@ -311,7 +311,7 @@ async def run_scenario_4_fraud_ring_detection(client: VajraDemoClient):
             print(f"   Entities: {len(ring['entities'])} (1 device + 5 users + 5 cards)")
             print(f"   Edges: {ring['edge_count']}")
             print(f"   Density: {ring['density']:.2f}")
-            print(f"   Risk: {ring['risk_score']:.2f}")
+            print(f"   Risk Score: {ring['risk_score']:.2f}")
             print(f"   Fraud Types: {ring['fraud_types']}")
             print(f"   Description: {ring['description']}")
     else:
