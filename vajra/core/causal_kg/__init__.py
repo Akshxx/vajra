@@ -678,16 +678,19 @@ class CausalFraudGraph:
         if txn_data.get("velocity_1h", 0) > 5:
             base_fraud_prob += 0.15
 
+        # Clamp base probability to valid range
+        base_fraud_prob = min(max(base_fraud_prob, 0.0), 0.95)
+
         cf_without_device = base_fraud_prob
         if any(f["entity"] == txn_data.get("device_id") for f in causal_factors):
-            cf_without_device = max(0.05, base_fraud_prob - 0.25)
+            cf_without_device = max(0.05, min(base_fraud_prob - 0.25, 0.95))
 
         cf_without_ip = base_fraud_prob
         if any(f["entity"] == txn_data.get("ip_address") for f in causal_factors):
-            cf_without_ip = max(0.05, base_fraud_prob - 0.15)
+            cf_without_ip = max(0.05, min(base_fraud_prob - 0.15, 0.95))
 
         return {
-            "fraud_probability": min(base_fraud_prob, 0.95),
+            "fraud_probability": base_fraud_prob,
             "without_device": cf_without_device,
             "without_ip": cf_without_ip,
             "base_rate": 0.05,
